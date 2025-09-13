@@ -1,0 +1,13 @@
+# Salidas de compilación y distribución
+/out/
+/dist/
+
+# Archivos temporales del sistema
+*.swp
+*.tmp
+*.log
+
+# Archivos del entorno de desarrollo
+.vscode/
+.idea/
+.DS_Store
