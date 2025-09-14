@@ -12,7 +12,7 @@ DIST_DIR=dist
 # Targets
 # ------------------------
 
-.PHONY: tools build run clean help
+.PHONY: tools build run clean help test
 
 tools:
 	@echo "==> Verificando dependencias..."
@@ -26,7 +26,6 @@ build:
 	mkdir -p $(OUT_DIR) $(DIST_DIR)
 	@echo "Build completado."
 
-# Nuevo: test
 test: tools build
 	@echo "==> Ejecutando pruebas con bats"
 	@mkdir -p $(OUT_DIR)
@@ -44,6 +43,7 @@ help:
 	@echo "Targets disponibles:"
 	@echo "  tools  - Verificar dependencias necesarias"
 	@echo "  build  - Crear directorios de salida"
+	@echo "  test   - Ejecutar pruebas con BATS y guardar log en out/"
 	@echo "  run    - Ejecutar el auditor con CHECK_URL por defecto"
 	@echo "  clean  - Limpiar out/ y dist/"
 	@echo "  help   - Mostrar esta ayuda"

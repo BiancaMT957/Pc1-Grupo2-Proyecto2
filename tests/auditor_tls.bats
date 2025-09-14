@@ -1,4 +1,3 @@
-
 @test "Ejecución correcta con https://www.google.com" {
   CHECK_URL="https://www.google.com" \
   OUTPUT_DIR="$BATS_TEST_DIRNAME/../out" \
