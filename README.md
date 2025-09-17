@@ -90,20 +90,16 @@ make test
 ```
 
 ==> Ejecutando pruebas con bats
-1..4
-ok 1 Ejecución correcta con https://www.google.com
-not ok 2 Fallo representativo: HTTP 404 (not found)
-# (in test file tests/auditor_tls.bats, line 16)
-#   `[[ "$output" =~ "Resultado final:" ]]' failed
-not ok 3 Fallo representativo: HTTP 400 (bad request)
-# (in test file tests/auditor_tls.bats, line 24)
-#   `[[ "$output" =~ "HTTP 400" ]]' failed
-not ok 4 Falla si no se define CHECK_URL
-# (in test file tests/auditor_tls.bats, line 31)
-#   `[ "$status" -ne 0 ]' failed
+
+``
+1..2
+ ok 1 Ejecución correcta con https://www.google.com
+# (in test file tests/auditor_tls.bats, line 5)
+#   `[ "$status" -eq 0 ]' failed
+ok 2 Falla si no se define CHECK_URL
 ```
 
-* **`1..4`**: Indica que Bats ejecutó **4 pruebas en total**.  
+* **`1..2`**: Indica que Bats ejecutó **2 pruebas en total**.  
   Bats utiliza el protocolo **TAP (Test Anything Protocol)** para reportar resultados.
 
 ### Resultado de cada prueba
@@ -111,24 +107,8 @@ not ok 4 Falla si no se define CHECK_URL
    -  La primera prueba pasó correctamente. 
    - El script `auditor_tls.sh` pudo conectarse a Google y generó la salida esperada.
 
-2. **`not ok 2 Fallo representativo: HTTP 404 (not found)`** 
-   -  La segunda prueba falló. 
-   - Bats muestra que en la **línea 16** del archivo `tests/auditor_tls.bats` falló la condición:  
-     ```
-     [[ "$output" =~ "Resultado final:" ]]
-     ```
-   - Significa que la salida del script no contenía la cadena `"Resultado final:"` para el caso de HTTP 404.
-
-3. **`not ok 3 Fallo representativo: HTTP 400 (bad request)`** 
-   -  La tercera prueba falló en la **línea 24**. 
-   - La condición que no se cumplió fue: 
-     ```
-     [[ "$output" =~ "HTTP 400" ]]
-     ```
-   - Es decir, el script no mostró exactamente la cadena `"HTTP 400"` en su salida para el caso de error 400.
-
-4. **`not ok 4 Falla si no se define CHECK_URL`**  
-   - La cuarta prueba falló en la **línea 31**. 
+2. ** `ok 2 Falla si no se define CHECK_URL`**  
+   - La segunda prueba falló en la **línea 31**. 
    - La condición que no se cumplió fue:  
      ```
      [ "$status" -ne 0 ]
