@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ------------------------
-# Configuración inicial del auditor
+# -----------------------
+# Configuración inicial
 # -----------------------
 CHECK_URL="${CHECK_URL:-https://www.google.com}"
 OUTPUT_DIR="$(dirname "$0")/../out" 
@@ -20,16 +20,6 @@ REQUIRE_LOGGER="${REQUIRE_LOGGER:-0}"      # 1=exigir logger; 0=opcional
 
 # -----------------------
 # Funciones log (implementa a Journal) y require
-# Puerto objetivo: por defecto HTTPS (443). Se puede sobrescribir con TARGET_PORT=####
-TARGET_PORT="${TARGET_PORT:-443}"
-
-# -----------------------
-# Manejo de errores global
-# -----------------------
-trap 'echo "Error inesperado en la línea $LINENO" | tee -a "$OUTPUT_FILE"' ERR
-
-# -----------------------
-# Funciones log y require
 # -----------------------
 log() {
     local msg="$*"                  # Toma uno o más argumentos de entrada
@@ -161,9 +151,18 @@ perm_sandbox_teardown() {
 # -----------------------
 # Manejo de errores global
 # -----------------------
+cleanup() {   # 
+  log "Recibida señal de interrupción. Limpiando..."
+  perm_sandbox_teardown
+  if [[ -f "$OUTPUT_FILE" ]]; then
+    rm -f -- "$OUTPUT_FILE"
+    log "Archivo temporal eliminado: $OUTPUT_FILE"
+  fi
+  exit 130
+}
 trap 'log "Error inesperado en la línea $LINENO"; perm_sandbox_teardown' ERR    # Se guarda en el Journal y borramos la Sandbox
 trap 'perm_sandbox_teardown' EXIT
-
+trap cleanup INT TERM
 # -----------------------
 # NUEVO: Check para permisos de escritura
 # -----------------------
@@ -179,6 +178,7 @@ check_write_dir() {
   fi
   return 0
 }
+
 
 
 # -----------------------
@@ -197,34 +197,11 @@ log "Verificando conectividad HTTP con: $CHECK_URL"
 
 host=$(extract_host "$CHECK_URL")
 
-check_http "$CHECK_URL"
-http_status=$?
+check_http "$CHECK_URL"; http_status=$?
 
-check_dns "$host"
-dns_status=$?
+check_dns "$host"; dns_status=$?
 
-check_write_dir "$OUTPUT_DIR"
-write_status=$?
-
-# -----------------------
-# NUEVO: Validaciones de puertos
-# -----------------------
-# 1) ss: inspección de sockets por puerto/estado (LOCAL / host actual)
-#    Nota: Esto valida que en *tu máquina* hay sockets con ese puerto y estado.
-#    Para servicios remotos, 'ss' es menos útil; se deja como evidencia de uso de ss.
-check_ss_status="LISTEN"   # puedes parametrizarlo con SS_STATE=LISTEN/ESTABLISHED
-if check_port_ss "localhost" "$TARGET_PORT" "${SS_STATE:-$check_ss_status}"; then
-    ss_status=0
-else
-    ss_status=$?
-fi
-
-# 2) nc: reachability del puerto 443 (o TARGET_PORT) en el host extraído de la URL (REMOTO)
-if check_port_nc "$host" "$TARGET_PORT"; then
-    nc_status=0
-else
-    nc_status=$?
-fi
+check_write_dir "$OUTPUT_DIR"; write_status=$?
 
 # -----------------------
 # NUEVO: Validaciones de puertos
