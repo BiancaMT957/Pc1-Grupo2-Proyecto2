@@ -49,4 +49,8 @@ Resultado final: ss detectó ausencia de sockets esperados (código 5)
 - Los mensajes enviados al Journal pueden revisarse con `journalctl -t auditor_tls` para ver todos los registros, o `journalctl -t auditor_tls --since "2 min ago"` para ver los registros de los ultimos 2 minutos. 
 - Tambien podemos hacerlo la revision por lineas `journalctl -t auditor_tls -n 20` que nos imprime las ultimas 20 lineas, o `journalctl -t auditor_tls -n 20 --no-pager` para los registros esten en un solo bloque y no en paginas.
 
-
+##  Prueba de señales (SIGINT):
+- Ejecuté `make run` y envié CTRL+C durante la ejecución.
+- El log mostró: "Recibida señal de interrupción. Limpiando..." seguido de la eliminación de la sandbox y archivos temporales.
+- Revisé la carpeta out/ y confirmé que no quedó ningún archivo residual.
+ Entonces  Cumple con el objetivo de parada limpia.
