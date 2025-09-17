@@ -10,18 +10,29 @@ CHECK_URL="${CHECK_URL:-https://www.google.com}"
 OUTPUT_DIR="$(dirname "$0")/../out" 
 OUTPUT_FILE="$OUTPUT_DIR/result_$(date +%Y%m%d_%H%M%S).txt"
 
+# Puerto objetivo: por defecto HTTPS (443). Se puede sobrescribir con TARGET_PORT=####
+TARGET_PORT="${TARGET_PORT:-443}"
+
 # -----------------------
 # Manejo de errores global
 # -----------------------
 trap 'echo "Error inesperado en la línea $LINENO" | tee -a "$OUTPUT_FILE"' ERR
 
 # -----------------------
-# Funciones
+# Funciones log y require
 # -----------------------
 log() {
     echo "$1" | tee -a "$OUTPUT_FILE"
 }
 
+require() {  # <--- NUEVO: valida herramientas presentes
+  command -v "$1" >/dev/null 2>&1 || { log "Error: falta la herramienta '$1'"; exit 99; }
+}
+
+
+# -----------------------
+# Funciones HTTP / DNS
+# -----------------------
 check_http() {
     local url=$1
     local code
@@ -60,8 +71,53 @@ extract_host() {
 }
 
 # -----------------------
+# NUEVO: Funciones de puertos con ss y nc
+# -----------------------
+
+# check_port_ss HOST PORT [STATE]
+# Usa ss para listar sockets y filtrar por puerto y estado.
+# STATE por defecto: LISTEN (para servicios locales); para remoto, usamos 'established' si quieres validar conexiones activas.
+check_port_ss() {
+    local host="$1"
+    local port="$2"
+    local state="${3:-LISTEN}"
+
+    # -t: TCP, -u: UDP, -n: numérico, -a: todos, -p: procesos (requiere permisos)
+    # Filtramos por puerto y estado; esto es más útil para puertos locales.
+    if ss -tuna state "$state" "( sport = :$port or dport = :$port )" 2>/dev/null | grep -q ":"; then
+        log "ss: Se encontraron sockets con puerto $port y estado $state (0=ok)"
+        return 0
+    else
+        log "ss: No se encontraron sockets con puerto $port y estado $state (≠0=falla)"
+        return 5
+    fi
+}
+
+# check_port_nc HOST PORT
+# Usa nc para validar si es posible abrir TCP al puerto (útil para 443 remoto).
+check_port_nc() {
+    local host="$1"
+    local port="$2"
+    local timeout="${NC_TIMEOUT:-3}"  # configurable: NC_TIMEOUT=5
+
+    # -z: scan sin enviar datos; -v: verboso; -w timeout; -n: no DNS en nc (ya resolvimos antes)
+    if nc -z -v -w "$timeout" "$host" "$port" >/dev/null 2>&1; then
+        log "nc: Puerto $port accesible en $host (TCP handshake OK) (0=ok)"
+        return 0
+    else
+        log "nc: Puerto $port NO accesible en $host (timeout/conn refused) (≠0=falla)"
+        return 6
+    fi
+}
+
+# -----------------------
 # Ejecución principal
 # -----------------------
+require curl
+require getent
+require ss
+require nc
+
 log "==== Proyecto 2 - Sprint 1 ===="
 log "Verificando conectividad HTTP con: $CHECK_URL"
 
@@ -74,6 +130,26 @@ check_dns "$host"
 dns_status=$?
 
 # -----------------------
+# NUEVO: Validaciones de puertos
+# -----------------------
+# 1) ss: inspección de sockets por puerto/estado (LOCAL / host actual)
+#    Nota: Esto valida que en *tu máquina* hay sockets con ese puerto y estado.
+#    Para servicios remotos, 'ss' es menos útil; se deja como evidencia de uso de ss.
+check_ss_status="LISTEN"   # puedes parametrizarlo con SS_STATE=LISTEN/ESTABLISHED
+if check_port_ss "localhost" "$TARGET_PORT" "${SS_STATE:-$check_ss_status}"; then
+    ss_status=0
+else
+    ss_status=$?
+fi
+
+# 2) nc: reachability del puerto 443 (o TARGET_PORT) en el host extraído de la URL (REMOTO)
+if check_port_nc "$host" "$TARGET_PORT"; then
+    nc_status=0
+else
+    nc_status=$?
+fi
+
+# -----------------------
 # Código de salida final
 # -----------------------
 if [ "$http_status" -ne 0 ]; then
@@ -82,6 +158,12 @@ if [ "$http_status" -ne 0 ]; then
 elif [ "$dns_status" -ne 0 ]; then
     log "Resultado final: DNS falló con código $dns_status (≠0=falla)"
     exit "$dns_status"
+elif [ "$ss_status" -ne 0 ]; then
+    log "Resultado final: ss detectó ausencia de sockets esperados (código $ss_status)"
+    exit "$ss_status"
+elif [ "$nc_status" -ne 0 ]; then
+    log "Resultado final: nc no pudo conectarse a $host:$TARGET_PORT (código $nc_status)"
+    exit "$nc_status"
 else
     log "Resultado final: Todo OK (0=ok)"
     exit 0
