@@ -33,6 +33,7 @@ nc: Puerto 44444 NO accesible en www.google.com (timeout/conn refused) (≠0=fal
 Resultado final: ss detectó ausencia de sockets esperados (código 5)
 
 
+
 # Issue 2: Simular politicas de permiso y guia para consultar logs
 
 ## 1. Creacion de la funcion perm_sandbox_setup

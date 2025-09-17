@@ -20,6 +20,16 @@ REQUIRE_LOGGER="${REQUIRE_LOGGER:-0}"      # 1=exigir logger; 0=opcional
 
 # -----------------------
 # Funciones log (implementa a Journal) y require
+# Puerto objetivo: por defecto HTTPS (443). Se puede sobrescribir con TARGET_PORT=####
+TARGET_PORT="${TARGET_PORT:-443}"
+
+# -----------------------
+# Manejo de errores global
+# -----------------------
+trap 'echo "Error inesperado en la línea $LINENO" | tee -a "$OUTPUT_FILE"' ERR
+
+# -----------------------
+# Funciones log y require
 # -----------------------
 log() {
     local msg="$*"                  # Toma uno o más argumentos de entrada
@@ -171,7 +181,6 @@ check_write_dir() {
 }
 
 
-
 # -----------------------
 # Ejecución principal
 # -----------------------
@@ -196,6 +205,26 @@ dns_status=$?
 
 check_write_dir "$OUTPUT_DIR"
 write_status=$?
+
+# -----------------------
+# NUEVO: Validaciones de puertos
+# -----------------------
+# 1) ss: inspección de sockets por puerto/estado (LOCAL / host actual)
+#    Nota: Esto valida que en *tu máquina* hay sockets con ese puerto y estado.
+#    Para servicios remotos, 'ss' es menos útil; se deja como evidencia de uso de ss.
+check_ss_status="LISTEN"   # puedes parametrizarlo con SS_STATE=LISTEN/ESTABLISHED
+if check_port_ss "localhost" "$TARGET_PORT" "${SS_STATE:-$check_ss_status}"; then
+    ss_status=0
+else
+    ss_status=$?
+fi
+
+# 2) nc: reachability del puerto 443 (o TARGET_PORT) en el host extraído de la URL (REMOTO)
+if check_port_nc "$host" "$TARGET_PORT"; then
+    nc_status=0
+else
+    nc_status=$?
+fi
 
 # -----------------------
 # NUEVO: Validaciones de puertos
