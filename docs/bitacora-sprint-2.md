@@ -51,6 +51,40 @@ Resultado final: ss detectó ausencia de sockets esperados (código 5)
 - Los mensajes enviados al Journal pueden revisarse con `journalctl -t auditor_tls` para ver todos los registros, o `journalctl -t auditor_tls --since "2 min ago"` para ver los registros de los ultimos 2 minutos. 
 - Tambien podemos hacerlo la revision por lineas `journalctl -t auditor_tls -n 20` que nos imprime las ultimas 20 lineas, o `journalctl -t auditor_tls -n 20 --no-pager` para los registros esten en un solo bloque y no en paginas.
 
+```
+Sep 17 16:02:05 MSI auditor_tls[3145]: SANDBOX creada: src/../out/auditor_sbx.r0piW5 (umask=027)     
+Sep 17 16:02:05 MSI auditor_tls[3146]: Permisos sandbox: 777 src/../out/auditor_sbx.r0piW5 ; archivo>
+Sep 17 16:02:05 MSI auditor_tls[3147]: ==== Proyecto 2 - Sprint 1 ====
+Sep 17 16:02:05 MSI auditor_tls[3148]: Verificando conectividad HTTP con: https://www.google.com     
+Sep 17 16:02:06 MSI auditor_tls[3157]: HTTP 200
+Sep 17 16:02:06 MSI auditor_tls[3158]: Conexión HTTP exitosa a https://www.google.com (0=ok)
+Sep 17 16:02:07 MSI auditor_tls[3161]: DNS resuelto correctamente. (0=ok)
+Sep 17 16:02:07 MSI auditor_tls[3164]: ss: No se encontraron sockets con puerto 443 y estado LISTEN >
+Sep 17 16:02:07 MSI auditor_tls[3167]: nc: Puerto 443 accesible en www.google.com (TCP handshake OK)>
+Sep 17 16:02:07 MSI auditor_tls[3168]: Resultado final: ss detectó ausencia de sockets esperados (có>
+Sep 17 16:02:07 MSI auditor_tls[3170]: SANDBOX eliminada: src/../out/auditor_sbx.r0piW5
+Sep 17 16:06:43 MSI auditor_tls[6138]: SANDBOX creada: src/../out/auditor_sbx.efUb8P (umask=027)     
+Sep 17 16:06:43 MSI auditor_tls[6139]: Permisos sandbox: 777 src/../out/auditor_sbx.efUb8P ; archivo>
+lines 1-13...skipping...
+Sep 17 16:02:05 MSI auditor_tls[3145]: SANDBOX creada: src/../out/auditor_sbx.r0piW5 (umask=027)
+Sep 17 16:02:05 MSI auditor_tls[3146]: Permisos sandbox: 777 src/../out/auditor_sbx.r0piW5 ; archivo>
+Sep 17 16:02:05 MSI auditor_tls[3147]: ==== Proyecto 2 - Sprint 1 ====
+Sep 17 16:02:05 MSI auditor_tls[3148]: Verificando conectividad HTTP con: https://www.google.com     
+Sep 17 16:02:06 MSI auditor_tls[3157]: HTTP 200
+Sep 17 16:02:06 MSI auditor_tls[3158]: Conexión HTTP exitosa a https://www.google.com (0=ok)
+Sep 17 16:02:07 MSI auditor_tls[3161]: DNS resuelto correctamente. (0=ok)
+Sep 17 16:02:07 MSI auditor_tls[3164]: ss: No se encontraron sockets con puerto 443 y estado LISTEN >
+Sep 17 16:02:07 MSI auditor_tls[3167]: nc: Puerto 443 accesible en www.google.com (TCP handshake OK)>
+Sep 17 16:02:07 MSI auditor_tls[3168]: Resultado final: ss detectó ausencia de sockets esperados (có>
+Sep 17 16:02:07 MSI auditor_tls[3170]: SANDBOX eliminada: src/../out/auditor_sbx.r0piW5
+Sep 17 16:06:43 MSI auditor_tls[6138]: SANDBOX creada: src/../out/auditor_sbx.efUb8P (umask=027)     
+Sep 17 16:06:43 MSI auditor_tls[6139]: Permisos sandbox: 777 src/../out/auditor_sbx.efUb8P ; archivo>
+Sep 17 16:06:43 MSI auditor_tls[6140]: ==== Proyecto 2 - Sprint 1 ====
+
+```
+
+
+
 ##  Prueba de señales (SIGINT):
 - Ejecuté `make run` y envié CTRL+C durante la ejecución.
 - El log mostró: "Recibida señal de interrupción. Limpiando..." seguido de la eliminación de la sandbox y archivos temporales.
@@ -81,3 +115,44 @@ Verificando conectividad HTTP con: https://www.google.com
 SANDBOX eliminada: src/../out/auditor_sbx.FMi0el
 make: *** [makefile:36: run] Error 35
  ```
+
+
+## Prueba de señales (SIGTERM)
+
+
+- Ejecuté `bash ./src/auditor_tls.sh &` en una terminal luego me salio un PID,  desde **otra terminal**, envié la señal `SIGTERM` con:
+  ```bash
+  kill -TERM <PID>
+   ```
+
+Prueba de ejecuciones o vista desde terminal:
+
+ ```
+ Primera terminal:
+bianca007@MSI:/mnt/c/Users/Bianca/Documents/Pc1-Grupo2-Proyecto2$ bash ./src/auditor_tls.sh &
+[1] 5862
+
+En la otra terminal: 
+bianca007@MSI:/mnt/c/Users/Bianca/Documents/Pc1-Grupo2-Proyecto2$ kill 5862
+
+Denuevo primera terminal:
+bianca007@MSI:/mnt/c/Users/Bianca/Documents/Pc1-Grupo2-Proyecto2$ SANDBOX creada: ./src/../out/auditor_sbx.yZt4we (umask=027)
+Permisos sandbox: 777 ./src/../out/auditor_sbx.yZt4we ; archivo: 777 ./src/../out/auditor_sbx.yZt4we/probe.txt
+==== Proyecto 2 - Sprint 1 ====
+Verificando conectividad HTTP con: https://www.google.com
+HTTP 200
+Conexión HTTP exitosa a https://www.google.com (0=ok)
+DNS resuelto correctamente. (0=ok)
+ss: No se encontraron sockets con puerto 443 y estado LISTEN (≠0=falla)
+nc: Puerto 443 accesible en www.google.com (TCP handshake OK) (0=ok)
+Script en pausa 60s para pruebas de señales (puedes usar kill -TERM o Ctrl+C)
+Recibida señal de interrupción. Limpiando...
+SANDBOX eliminada: ./src/../out/auditor_sbx.yZt4we
+Archivo temporal eliminado: ./src/../out/result_20250918_144447.txt
+
+[1]+  Exit 130                bash ./src/auditor_tls.sh
+
+
+
+
+
