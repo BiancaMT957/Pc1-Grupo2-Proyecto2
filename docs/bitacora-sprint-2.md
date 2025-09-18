@@ -13,6 +13,8 @@
 
 ## 3. Ejemplos de log's de salida:
 - Asignamos el valor por defecto 443 (HTTPS) al puerto objetivo:
+
+```
 ==== Proyecto 2 - Sprint 1 ====
 Verificando conectividad HTTP con: https://www.google.com
 HTTP 200
@@ -31,7 +33,7 @@ DNS resuelto correctamente. (0=ok)
 ss: No se encontraron sockets con puerto 44444 y estado LISTEN (≠0=falla)
 nc: Puerto 44444 NO accesible en www.google.com (timeout/conn refused) (≠0=falla)
 Resultado final: ss detectó ausencia de sockets esperados (código 5)
-
+```
 
 
 ## Simular politicas de permiso y guia para consultar logs
@@ -54,3 +56,28 @@ Resultado final: ss detectó ausencia de sockets esperados (código 5)
 - El log mostró: "Recibida señal de interrupción. Limpiando..." seguido de la eliminación de la sandbox y archivos temporales.
 - Revisé la carpeta out/ y confirmé que no quedó ningún archivo residual.
  Entonces  Cumple con el objetivo de parada limpia.
+
+ Ejecucion:
+
+Desde la raiz del proyecto:
+```
+make run
+```
+
+Prueba de ejecuciones:
+
+
+ ```
+ ==> Verificando dependencias...
+Todas las dependencias están disponibles.
+==> Preparando directorios...
+mkdir -p out dist
+Build completado.
+==> Ejecutando auditor_tls.sh
+SANDBOX creada: src/../out/auditor_sbx.FMi0el (umask=027)
+Permisos sandbox: 777 src/../out/auditor_sbx.FMi0el ; archivo: 777 src/../out/auditor_sbx.FMi0el/probe.txt
+==== Proyecto 2 - Sprint 1 ====
+Verificando conectividad HTTP con: https://www.google.com
+SANDBOX eliminada: src/../out/auditor_sbx.FMi0el
+make: *** [makefile:36: run] Error 35
+ ```
