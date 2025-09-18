@@ -151,18 +151,22 @@ perm_sandbox_teardown() {
 # -----------------------
 # Manejo de errores global
 # -----------------------
-cleanup() {   # 
+cleanup() {
+  set +e    # <---- evita que un fallo interrumpa el cleanup
   log "Recibida señal de interrupción. Limpiando..."
   perm_sandbox_teardown
   if [[ -f "$OUTPUT_FILE" ]]; then
     rm -f -- "$OUTPUT_FILE"
     log "Archivo temporal eliminado: $OUTPUT_FILE"
   fi
+  set -e    # (opcional) restaurar
   exit 130
 }
-trap 'log "Error inesperado en la línea $LINENO"; perm_sandbox_teardown' ERR    # Se guarda en el Journal y borramos la Sandbox
-trap 'perm_sandbox_teardown' EXIT
+
 trap cleanup INT TERM
+trap 'perm_sandbox_teardown' EXIT
+trap 'log "Error inesperado en la línea $LINENO"; perm_sandbox_teardown' ERR
+
 # -----------------------
 # NUEVO: Check para permisos de escritura
 # -----------------------
@@ -222,6 +226,9 @@ if check_port_nc "$host" "$TARGET_PORT"; then
 else
     nc_status=$?
 fi
+
+log "Script en pausa 60s para pruebas de señales (puedes usar kill -TERM o Ctrl+C)"
+sleep 60
 
 # -----------------------
 # Código de salida final
