@@ -31,3 +31,36 @@ make pack RELEASE=v1.0.0
 
 # Opcional: fijar fecha para reproducibilidad bit-a-bit
 make pack RELEASE=v1.0.0 SOURCE_DATE_EPOCH=$(date -u +%s)
+
+
+
+
+
+
+# Contrato de Salidas – Proyecto 2 (Sprint 3)
+
+## 1) Propósito
+Definir **qué artefactos** produce el sistema, **dónde** se generan, **formato**, **condiciones de idempotencia**, y **cómo validar su integridad y reproducibilidad**.
+
+## 2) Artefactos
+
+### 2.1 Paquete distribuible (reproducible)
+- **Ruta**: `dist/<PROJECT>-<RELEASE>.tar.gz`
+- **Origen**: `make pack`
+- **Formato**: `tar.gz` reproducible
+- **Determinismo aplicado**:
+  - `tar --sort=name --mtime=@$SOURCE_DATE_EPOCH --owner=0 --group=0 --numeric-owner`
+  - compresión sin timestamp (`gzip --no-name` o `GZIP=-n`)
+- **Integridad**: validable por `sha256sum` (mismo hash si no cambian fuentes ni `SOURCE_DATE_EPOCH`)
+- **No se regenera** si ya existe: **sí**, se **vuelve a crear** (pero con el **mismo hash** si no hay cambios).
+
+**Validación rápida**
+```bash
+make clean && make build
+make pack RELEASE=v1.0.0 SOURCE_DATE_EPOCH=0
+sha256sum dist/Pc1-Grupo2-Proyecto2-v1.0.0.tar.gz
+
+# repetir:
+make clean && make build
+make pack RELEASE=v1.0.0 SOURCE_DATE_EPOCH=0
+sha256sum dist/Pc1-Grupo2-Proyecto2-v1.0.0.tar.gz   # => mismo hash
