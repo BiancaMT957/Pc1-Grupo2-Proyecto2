@@ -5,8 +5,19 @@ set -euo pipefail
 # Configuración inicial
 # -----------------------
 CHECK_URL="${CHECK_URL:-https://www.google.com}"
-OUTPUT_DIR="$(dirname "$0")/../out" 
-OUTPUT_FILE="$OUTPUT_DIR/result_$(date +%Y%m%d_%H%M%S).txt"
+OUTPUT_DIR="$(dirname "$0")/../out"
+# Idempotencia: un nombre fijo y estable
+OUTPUT_BASENAME="${OUTPUT_BASENAME:-auditor_tls}"
+OUTPUT_FILE="$OUTPUT_DIR/${OUTPUT_BASENAME}.log"
+# Buffer temporal
+TMP_FILE="$(mktemp -p "$OUTPUT_DIR" "${OUTPUT_BASENAME}.tmp.XXXXXX")"
+# Integridad
+OUTPUT_SHA256="$OUTPUT_FILE.sha256"
+# Controlar chequeo de sockets en CI (idempotencia de exits)
+CHECK_SS="${CHECK_SS:-1}"                  # 1=fatal según lógica; 0=no fatal/skip
+# Evitar “cuelgues” en CI
+ENABLE_SLEEP="${ENABLE_SLEEP:-0}"
+SLEEP_SECONDS="${SLEEP_SECONDS:-60}"
 
 TARGET_PORT="${TARGET_PORT:-443}"   # Por defecto HTTPS (443). Sobreescribe TARGET_PORT=####
 
@@ -24,7 +35,7 @@ REQUIRE_LOGGER="${REQUIRE_LOGGER:-0}"      # 1=exigir logger; 0=opcional
 log() {
     local msg="$*"                  
     echo "$msg"                     
-    echo "$msg" >> "$OUTPUT_FILE"   
+    echo "$msg" >> "$TMP_FILE"   
     if command -v logger >/dev/null 2>&1; then
         logger -t "$JOURNAL_TAG" -- "$msg"
     fi
@@ -40,7 +51,8 @@ require() {
 check_http() {
     local url=$1
     local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+    # Timeouts para evitar bloqueos
+    code=$(curl -sS --connect-timeout 3 --max-time 5 -o /dev/null -w "%{http_code}" "$url" || true)
     log "HTTP $code"
     case "$code" in
         200)
@@ -77,9 +89,8 @@ extract_host() {
 # Funciones de puertos con ss y nc
 # -----------------------
 check_port_ss() {
-    local host="$1"
-    local port="$2"
-    local state="${3:-LISTEN}"
+    local port="$1"
+    local state="${2:-LISTEN}"
 
     if ss -tuna state "$state" "( sport = :$port or dport = :$port )" 2>/dev/null | grep -q ":"; then
         log "ss: Se encontraron sockets con puerto $port y estado $state (0=ok)"
@@ -107,22 +118,38 @@ check_port_nc() {
 
 generar_reporte_tls() {
     local host="$1"
-    local report="$OUTPUT_DIR/reporte-TLS-$(date +%Y%m%d_%H%M%S).txt"
+    local base="reporte-TLS-${host}.txt"             # nombre determinístico
+    local final="$OUTPUT_DIR/$base"
+    local tmp="$(mktemp -p "$OUTPUT_DIR" "${base}.tmp.XXXXXX")"
 
     {
         echo "==== REPORTE TLS ===="
         echo "Host: $host"
-        echo "Fecha: $(date)"
+        echo "Generado por auditor_tls.sh (determinístico)"
         echo ""
         echo ">> Conexiones SS (ordenadas y únicas)"
         ss -tuna | sort | uniq | tr 'A-Z' 'a-z'
         echo ""
         echo ">> Resolución DNS"
         getent hosts "$host" | sort | uniq | tr 'A-Z' 'a-z'
-    } > "$report"
+    } > "$tmp"
 
-    log "Reporte TLS generado en $report"
+    # Commit idempotente (solo si cambia)
+    if [[ -f "$final" ]]; then
+        if diff -q "$final" "$tmp" >/dev/null 2>&1; then
+            rm -f -- "$tmp"
+            log "Reporte TLS sin cambios: $final"
+            return 0
+        fi
+    fi
+
+    mv -f -- "$tmp" "$final"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$final" > "$final.sha256"
+    fi
+    log "Reporte TLS generado/actualizado: $final"
 }
+
 
 # ------------------------------------------------
 # Sandbox de permisos con umask documentado
@@ -158,9 +185,9 @@ cleanup() {
   set +e
   log "Recibida señal de interrupción. Limpiando..."
   perm_sandbox_teardown
-  if [[ -f "$OUTPUT_FILE" ]]; then
-    rm -f -- "$OUTPUT_FILE"
-    log "Archivo temporal eliminado: $OUTPUT_FILE"
+  if [[ -f "$TMP_FILE" ]]; then
+    rm -f -- "$TMP_FILE"
+    echo "TMP eliminado: $TMP_FILE" >> /dev/null
   fi
   set -e
   exit 130
@@ -186,6 +213,30 @@ check_write_dir() {
   return 0
 }
 
+finalize_output() {
+  set +e
+  if [[ -f "$OUTPUT_FILE" ]]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+      old_sum="$(sha256sum "$OUTPUT_FILE" 2>/dev/null | awk '{print $1}')"
+      new_sum="$(sha256sum "$TMP_FILE"    2>/dev/null | awk '{print $1}')"
+      if [[ "$old_sum" = "$new_sum" ]]; then
+        rm -f -- "$TMP_FILE"
+        return 0
+      fi
+    else
+      if diff -q "$OUTPUT_FILE" "$TMP_FILE" >/dev/null 2>&1; then
+        rm -f -- "$TMP_FILE"
+        return 0
+      fi
+    fi
+  fi
+  mv -f -- "$TMP_FILE" "$OUTPUT_FILE"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$OUTPUT_FILE" > "$OUTPUT_SHA256"
+  fi
+  set -e
+}
+
 # -----------------------
 # Ejecución principal
 # -----------------------
@@ -208,10 +259,15 @@ check_write_dir "$OUTPUT_DIR"; write_status=$?
 
 # Validaciones de puertos
 check_ss_status="LISTEN"
-if check_port_ss "localhost" "$TARGET_PORT" "${SS_STATE:-$check_ss_status}"; then
-    ss_status=0
+if [[ "$CHECK_SS" = "1" ]]; then
+    if check_port_ss "$TARGET_PORT" "${SS_STATE:-$check_ss_status}"; then
+        ss_status=0
+    else
+        ss_status=$?
+    fi
 else
-    ss_status=$?
+    log "ss: SKIP (CHECK_SS=0)"
+    ss_status=0
 fi
 
 if check_port_nc "$host" "$TARGET_PORT"; then
@@ -233,22 +289,23 @@ generar_reporte_tls "$host"
 # -----------------------
 if [ "$http_status" -ne 0 ]; then
     log "Resultado final: HTTP falló con código $http_status (≠0=falla)"
-    exit "$http_status"
+    exit_code="$http_status"
 elif [ "$dns_status" -ne 0 ]; then
     log "Resultado final: DNS falló con código $dns_status (≠0=falla)"
-    exit "$dns_status"
+    exit_code="$dns_status"
 elif [ "$ss_status" -ne 0 ]; then
     log "Resultado final: ss detectó ausencia de sockets esperados (código $ss_status)"
-    exit "$ss_status"
+    exit_code="$ss_status"
 elif [ "$nc_status" -ne 0 ]; then
     log "Resultado final: nc no pudo conectarse a $host:$TARGET_PORT (código $nc_status)"
-    exit "$nc_status"
+    exit_code="$nc_status"
 elif [ "$write_status" -ne 0 ]; then
     log "Resultado final: permisos insuficientes en $OUTPUT_DIR (código $write_status)"
-    exit "$write_status"
+    exit_code="$write_status"
 else
     log "Resultado final: Todo OK (0=ok)"
-    exit 0
+    exit_code=0
 fi
-
-
+# Consolida el log (idempotente)
+finalize_output
+exit "$exit_code"
