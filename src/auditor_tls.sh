@@ -22,19 +22,17 @@ REQUIRE_LOGGER="${REQUIRE_LOGGER:-0}"      # 1=exigir logger; 0=opcional
 # Funciones log (implementa a Journal) y require
 # -----------------------
 log() {
-    local msg="$*"                  # Toma uno o más argumentos de entrada
-    echo "$msg"                     # Imprime en consola
-    echo "$msg" >> "$OUTPUT_FILE"   # Guarda en archivo de salida
-    # Manda al journal si logger existe
+    local msg="$*"                  
+    echo "$msg"                     
+    echo "$msg" >> "$OUTPUT_FILE"   
     if command -v logger >/dev/null 2>&1; then
         logger -t "$JOURNAL_TAG" -- "$msg"
     fi
 }
 
-require() {  # <--- NUEVO: valida herramientas presentes
+require() {  
   command -v "$1" >/dev/null 2>&1 || { log "Error: falta la herramienta '$1'"; exit 99; }
 }
-
 
 # -----------------------
 # Funciones HTTP / DNS
@@ -72,24 +70,17 @@ check_dns() {
 }
 
 extract_host() {
-    # Extrae el host de una URL
     echo "$1" | awk -F/ '{print $3}'
 }
 
 # -----------------------
-# NUEVO: Funciones de puertos con ss y nc
+# Funciones de puertos con ss y nc
 # -----------------------
-
-# check_port_ss HOST PORT [STATE]
-# Usa ss para listar sockets y filtrar por puerto y estado.
-# STATE por defecto: LISTEN (para servicios locales); para remoto, usamos 'established' si quieres validar conexiones activas.
 check_port_ss() {
     local host="$1"
     local port="$2"
     local state="${3:-LISTEN}"
 
-    # -t: TCP, -u: UDP, -n: numérico, -a: todos, -p: procesos (requiere permisos)
-    # Filtramos por puerto y estado; esto es más útil para puertos locales.
     if ss -tuna state "$state" "( sport = :$port or dport = :$port )" 2>/dev/null | grep -q ":"; then
         log "ss: Se encontraron sockets con puerto $port y estado $state (0=ok)"
         return 0
@@ -99,14 +90,11 @@ check_port_ss() {
     fi
 }
 
-# check_port_nc HOST PORT
-# Usa nc para validar si es posible abrir TCP al puerto (útil para 443 remoto).
 check_port_nc() {
     local host="$1"
     local port="$2"
-    local timeout="${NC_TIMEOUT:-3}"  # configurable: NC_TIMEOUT=5
+    local timeout="${NC_TIMEOUT:-3}"
 
-    # -z: scan sin enviar datos; -v: verboso; -w timeout; -n: no DNS en nc (ya resolvimos antes)
     if nc -z -v -w "$timeout" "$host" "$port" >/dev/null 2>&1; then
         log "nc: Puerto $port accesible en $host (TCP handshake OK) (0=ok)"
         return 0
@@ -116,32 +104,47 @@ check_port_nc() {
     fi
 }
 
+
+generar_reporte_tls() {
+    local host="$1"
+    local report="$OUTPUT_DIR/reporte-TLS-$(date +%Y%m%d_%H%M%S).txt"
+
+    {
+        echo "==== REPORTE TLS ===="
+        echo "Host: $host"
+        echo "Fecha: $(date)"
+        echo ""
+        echo ">> Conexiones SS (ordenadas y únicas)"
+        ss -tuna | sort | uniq | tr 'A-Z' 'a-z'
+        echo ""
+        echo ">> Resolución DNS"
+        getent hosts "$host" | sort | uniq | tr 'A-Z' 'a-z'
+    } > "$report"
+
+    log "Reporte TLS generado en $report"
+}
+
 # ------------------------------------------------
-# NUEVO: sandbox de permisos con umask documentado
+# Sandbox de permisos con umask documentado
 # ------------------------------------------------
 perm_sandbox_setup() {
   local old_umask
   old_umask=$(umask)
-  umask "$PERM_UMASK"        # aplica política de permisos simulada
+  umask "$PERM_UMASK"
 
-  # Crea sandbox temporal (carpeta de trabajo con esa umask)
   SANDBOX_DIR="$(mktemp -d -p "$PERM_SANDBOX_PARENT" auditor_sbx.XXXXXX)"
-  # Crea un archivo para evidenciar máscaras (permisos heredados)
   : > "$SANDBOX_DIR/probe.txt"
 
-  # Muestra permisos efectivos (evidencia)
   local dperm fperm
   dperm="$(stat -c '%a %n' "$SANDBOX_DIR")"
   fperm="$(stat -c '%a %n' "$SANDBOX_DIR/probe.txt")"
   log "SANDBOX creada: $SANDBOX_DIR (umask=$PERM_UMASK)"
   log "Permisos sandbox: $dperm ; archivo: $fperm"
 
-  # Restaura umask original para no afectar al resto del script
   umask "$old_umask"
 }
 
 perm_sandbox_teardown() {
-  # Limpieza al salir
   if [[ -n "${SANDBOX_DIR:-}" && -d "$SANDBOX_DIR" ]]; then
     rm -rf -- "$SANDBOX_DIR"
     log "SANDBOX eliminada: $SANDBOX_DIR"
@@ -152,14 +155,14 @@ perm_sandbox_teardown() {
 # Manejo de errores global
 # -----------------------
 cleanup() {
-  set +e    # <---- evita que un fallo interrumpa el cleanup
+  set +e
   log "Recibida señal de interrupción. Limpiando..."
   perm_sandbox_teardown
   if [[ -f "$OUTPUT_FILE" ]]; then
     rm -f -- "$OUTPUT_FILE"
     log "Archivo temporal eliminado: $OUTPUT_FILE"
   fi
-  set -e    # (opcional) restaurar
+  set -e
   exit 130
 }
 
@@ -168,7 +171,7 @@ trap 'perm_sandbox_teardown' EXIT
 trap 'log "Error inesperado en la línea $LINENO"; perm_sandbox_teardown' ERR
 
 # -----------------------
-# NUEVO: Check para permisos de escritura
+# Check para permisos de escritura
 # -----------------------
 check_write_dir() {
   local dir="$1"
@@ -183,8 +186,6 @@ check_write_dir() {
   return 0
 }
 
-
-
 # -----------------------
 # Ejecución principal
 # -----------------------
@@ -192,7 +193,7 @@ require curl
 require getent
 require ss
 require nc
-require logger      # Para acceder al journal
+require logger
 
 perm_sandbox_setup
 
@@ -202,25 +203,17 @@ log "Verificando conectividad HTTP con: $CHECK_URL"
 host=$(extract_host "$CHECK_URL")
 
 check_http "$CHECK_URL"; http_status=$?
-
 check_dns "$host"; dns_status=$?
-
 check_write_dir "$OUTPUT_DIR"; write_status=$?
 
-# -----------------------
-# NUEVO: Validaciones de puertos
-# -----------------------
-# 1) ss: inspección de sockets por puerto/estado (LOCAL / host actual)
-#    Nota: Esto valida que en *tu máquina* hay sockets con ese puerto y estado.
-#    Para servicios remotos, 'ss' es menos útil; se deja como evidencia de uso de ss.
-check_ss_status="LISTEN"   # puedes parametrizarlo con SS_STATE=LISTEN/ESTABLISHED
+# Validaciones de puertos
+check_ss_status="LISTEN"
 if check_port_ss "localhost" "$TARGET_PORT" "${SS_STATE:-$check_ss_status}"; then
     ss_status=0
 else
     ss_status=$?
 fi
 
-# 2) nc: reachability del puerto 443 (o TARGET_PORT) en el host extraído de la URL (REMOTO)
 if check_port_nc "$host" "$TARGET_PORT"; then
     nc_status=0
 else
@@ -228,7 +221,12 @@ else
 fi
 
 log "Script en pausa 60s para pruebas de señales (puedes usar kill -TERM o Ctrl+C)"
-sleep 60
+sleep 1
+
+# -----------------------
+# Generar reporte TLS
+# -----------------------
+generar_reporte_tls "$host"
 
 # -----------------------
 # Código de salida final
@@ -252,3 +250,5 @@ else
     log "Resultado final: Todo OK (0=ok)"
     exit 0
 fi
+
+
